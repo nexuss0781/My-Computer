@@ -1,0 +1,16 @@
+{
+  "name": "my-computer",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Provider-neutral personal data, deployment, and AI workflow fabric",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "npm run typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": ["dist", "packages", "schemas", "docs", "projects"]
+}

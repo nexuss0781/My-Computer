@@ -1,0 +1,53 @@
+project: amharic-archive
+version: 1
+
+control_plane:
+  provider: paradox-db
+  project: amharic-archive
+
+sources:
+  - name: telegram
+    provider: telegram
+    purpose: pdf-ingestion
+
+storage:
+  - name: archive
+    provider: huggingface
+    type: dataset
+    repository: Nexuss0781/Amharic_Archive
+    visibility: private
+    content:
+      - original-pdf
+      - extracted-text
+      - metadata
+
+applications:
+  - name: catalog
+    provider: vercel
+    purpose: searchable-dashboard
+
+automation:
+  - name: validation
+    provider: github-actions
+    trigger: pull-request
+  - name: synchronization
+    provider: github-actions
+    trigger: manual-or-dispatch
+
+ai:
+  text_extraction: true
+  ocr_derivatives: true
+  training_manifests: true
+  public_promotion_required: true
+
+privacy:
+  default_visibility: private
+  public_promotion_required: true
+
+secrets:
+  - TELEGRAM_BOT_TOKEN
+  - TELEGRAM_API_ID
+  - TELEGRAM_API_HASH
+  - PARADOX_API_KEY
+  - PARADOX_PASSPHRASE
+  - HF_TOKEN
