@@ -2,6 +2,16 @@
 
 ## Telegram ingestion
 
+## First template: Telegram Sync button
+
+The Telegram bot exposes one **Synchronize to Hugging Face** button. Vercel handles the short control-plane request and dispatches `sync-telegram.yml` in this repository through the GitHub Actions API. The workflow then starts a temporary Local Telegram Bot API on the GitHub runner, downloads pending source files, uploads them to Hugging Face, and updates Paradox-DB through the Vercel synchronization endpoint.
+
+The workflow uses one run with a fixed matrix of up to four batch workers. Each worker processes its assigned records sequentially. This is concurrent at the batch level, not one GitHub job per PDF. A repository concurrency group prevents two Sync button presses from running overlapping synchronization sessions.
+
+Vercel requires a GitHub token with permission to dispatch this repository workflow. GitHub Actions requires `HF_TOKEN`, `HF_REPO_ID`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `VERCEL_SYNC_API_URL`, and `MY_COMPUTER_SYNC_SECRET` as repository or environment secrets. The public repository contains no secret values.
+
+The GitHub runner is temporary. It hosts the Local Telegram Bot API only while the workflow is running; it is not a permanent Bot API server. This template is therefore suitable for explicit synchronization runs and does not replace a continuously running Telegram service.
+
 A source adapter receives a Telegram update and normalizes it into a My-Computer event. The adapter must preserve the Telegram chat ID, message ID, file name, media type, file size, and source URL or reference without making Telegram-specific fields part of the core contract.
 
 The ingestion workflow creates an object ID, streams a SHA-256 checksum, records the object in the control plane, and schedules classification. Large files must be read once and retained in a durable local or staging path until all required storage writes finish.

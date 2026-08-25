@@ -1,0 +1,106 @@
+name: sync-telegram-to-hugging-face
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: My-Computer project identifier
+        required: true
+        default: telegram-pdf-bot
+        type: string
+      chat_id:
+        description: Telegram chat receiving progress updates
+        required: false
+        type: string
+      status_message_id:
+        description: Telegram status message to edit
+        required: false
+        type: string
+      shard_count:
+        description: Number of concurrent batches, not PDFs
+        required: false
+        default: '4'
+        type: string
+
+concurrency:
+  group: my-computer-telegram-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      shard_count: ${{ steps.config.outputs.shard_count }}
+    steps:
+      - id: config
+        shell: bash
+        run: |
+          count='${{ inputs.shard_count }}'
+          if ! [[ "$count" =~ ^[1-9][0-9]*$ ]] || [ "$count" -gt 8 ]; then count=4; fi
+          echo "shard_count=$count" >> "$GITHUB_OUTPUT"
+
+  sync:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard_index: [0, 1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      LOCAL_BOT_API: http://127.0.0.1:8081/bot
+      LOCAL_FILE_API: http://127.0.0.1:8081/file
+      SYNC_API_URL: ${{ secrets.VERCEL_SYNC_API_URL }}
+      MY_COMPUTER_SYNC_SECRET: ${{ secrets.MY_COMPUTER_SYNC_SECRET }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
+      HF_REPO_TYPE: dataset
+      SYNC_CHAT_ID: ${{ inputs.chat_id }}
+      SYNC_STATUS_MESSAGE_ID: ${{ inputs.status_message_id }}
+      GITHUB_RUN_ID: ${{ github.run_id }}
+    steps:
+      - name: Check out My-Computer
+        uses: actions/checkout@v4
+
+      - name: Install PDF and Hub dependencies
+        run: python -m pip install --disable-pip-version-check --no-cache-dir 'huggingface_hub>=0.31,<1' 'pypdf>=6,<7'
+
+      - name: Start temporary Local Telegram Bot API
+        run: |
+          mkdir -p "$RUNNER_TEMP/telegram-bot-api"
+          docker run -d --name my-computer-telegram-api \
+            -p 8081:8081 \
+            -v "$RUNNER_TEMP/telegram-bot-api:/var/lib/telegram-bot-api" \
+            aiogram/telegram-bot-api:latest \
+            --api-id="$TELEGRAM_API_ID" \
+            --api-hash="$TELEGRAM_API_HASH" \
+            --local \
+            --http-ip-address=0.0.0.0 \
+            --http-port=8081 \
+            --dir=/var/lib/telegram-bot-api \
+            --temp-dir=/tmp/telegram-bot-api
+          for attempt in {1..30}; do
+            if curl -fsS "$LOCAL_BOT_API/$TELEGRAM_BOT_TOKEN/getMe" >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          docker logs my-computer-telegram-api
+          exit 1
+
+      - name: Run one concurrent batch
+        run: |
+          python scripts/sync_telegram.py \
+            --shard-index '${{ matrix.shard_index }}' \
+            --shard-count '${{ needs.prepare.outputs.shard_count }}' \
+            --chat-id '${{ inputs.chat_id }}' \
+            --status-message-id '${{ inputs.status_message_id }}'
+
+      - name: Show Local Bot API logs on failure
+        if: failure()
+        run: docker logs my-computer-telegram-api || true
