@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: |
           count='${{ inputs.shard_count }}'
-          if ! [[ "$count" =~ ^[1-9][0-9]*$ ]] || [ "$count" -gt 8 ]; then count=4; fi
+          if ! [[ "$count" =~ ^[1-9][0-9]*$ ]] || [ "$count" -gt 4 ]; then count=4; fi
           echo "shard_count=$count" >> "$GITHUB_OUTPUT"
 
   sync:
